@@ -6,6 +6,9 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
 import com.securityapi.config.JwtService;
+import com.securityapi.token.Token;
+import com.securityapi.token.TokenRepository;
+import com.securityapi.token.TokenType;
 import com.securityapi.user.Role;
 import com.securityapi.user.User;
 import com.securityapi.user.UserRepository;
@@ -21,7 +24,7 @@ public class AuthenticationService {
 	  private final PasswordEncoder passwordEncoder;
 	  private final JwtService jwtService;
 	  private final AuthenticationManager authenticationManager;
-	
+	  private final TokenRepository tokenRepository;
 	
 	public AuthenticationResponse register(RegisterRequest request) {
 		 
@@ -33,9 +36,11 @@ public class AuthenticationService {
 		        .role(Role.USER)
 		        .build();
 		
-		repository.save(user);
+		User savedUser = repository.save(user);
 		
 		var jwtToken = jwtService.generateToken(user);
+		
+		saveUserToken(savedUser,jwtToken);
 		
 		return AuthenticationResponse.builder()
 				 .accessToken(jwtToken)
@@ -57,10 +62,49 @@ public class AuthenticationService {
 		
 		var jwtToken = jwtService.generateToken(user);
 		
+		revokeAllUserTokens(user);
+		
+		saveUserToken(user,jwtToken);
+		
 		return AuthenticationResponse.builder()
 				 .accessToken(jwtToken)
 				 .build();
 		
 	}
+	
+	
+	
+	 private void saveUserToken(User user, String jwtToken) {
+		    
+		 var token = Token.builder()
+		        .user(user)
+		        .token(jwtToken)
+		        .tokenType(TokenType.BEARER)
+		        .expired(false)
+		        .revoked(false)
+		        .build();
+		    
+		 tokenRepository.save(token);
+		  
+	 }
+	 
+	 
+	 
+	 
+	 private void revokeAllUserTokens(User user) {
+		    
+		 var validUserTokens = tokenRepository.findAllValidTokenByUser(user.getId());
+		    
+		 if (validUserTokens.isEmpty())
+		      return;
+		    
+		 validUserTokens.forEach(token -> {
+		      token.setExpired(true);
+		      token.setRevoked(true);
+		    });
+		    
+		 tokenRepository.saveAll(validUserTokens);
+		  
+	 }
 
 }
